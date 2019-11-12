@@ -2,7 +2,6 @@
 
 import struct
 import serial
-
 import threading
 import queue
 
@@ -18,23 +17,24 @@ class PendulumController(object):
     MODE_CALIBRATE =                b'\x01' 
     MODE_UART_CONTROL =             b'\x02' 
     MODE_COSINE_CONTROL =           b'\x03'
-    MODE_PID_ANGLE_SPEED_CONTROL =  b'\x04'
-    MODE_PID_ANGLE_POS_CONTROL =    b'\x05'
+    MODE_STEP_CONTROL =             b'\x04'
+    MODE_PID_ANGLE_SPEED_CONTROL =  b'\x05'
+    MODE_PID_ANGLE_POS_CONTROL =    b'\x06'
     
-    STATUS_FORMAT = "<iiiic"
+    STATUS_FORMAT = "<iiiiic"
     
     MAX_DATAPOINTS = 1000
-    PLOT_WINDOW = 50
+    PLOT_WINDOW = 100
     
-    def __init__(self, port='COM6', ax=None):
-        self.ser = serial.Serial(port='COM6',
+    def __init__(self, port='COM7', ax=None):
+        self.ser = serial.Serial(port=port,
                             baudrate=115200,
                             bytesize=8,
                             parity='N',
                             stopbits=1,
                             timeout=None)
         
-        self.data = np.empty((self.MAX_DATAPOINTS, 4), dtype=int)
+        self.data = np.empty((self.MAX_DATAPOINTS, 5), dtype=int)
         self.datapoints = 0
         
         self.dataqueue = queue.Queue(maxsize=self.MAX_DATAPOINTS)
@@ -43,9 +43,8 @@ class PendulumController(object):
         self.angle_plot, = ax.plot(x, np.sin(x))
         self.motor1_counts_plot, = ax.plot(x, np.sin(x+1))
         self.motor1_cps_plot, = ax.plot(x, np.sin(x+2))
-        
-        print(self.angle_plot)
-        
+        self.motor1_command_plot, = ax.plot(x, np.sin(x+3))
+                
     def __del__(self):
         self.close_serial()
     
@@ -119,7 +118,9 @@ class PendulumController(object):
         if (self.ser.read(2) == b'BC'):
             line = self.ser.readline()
             data = struct.unpack(self.STATUS_FORMAT, line)
-            print(data)
+            for value in data[:4]:
+                print(value, end=',')
+            print(data[4])
             return data
     
     def captureloop(self):
@@ -141,29 +142,43 @@ class PendulumController(object):
         self.angle_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_counts_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_cps_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot
+        self.motor1_command_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
             
     def animate_and_store(self, i):
-        self.data[self.datapoints, :] =  self.dataqueue.get()[:4]
+        self.data[self.datapoints, :] =  self.dataqueue.get()[:5]
         self.datapoints += 1
         if i > self.PLOT_WINDOW:
             self.angle_plot.set_ydata(self.data[i-self.PLOT_WINDOW:i, 1]/512.0)
             self.motor1_counts_plot.set_ydata(self.data[i-self.PLOT_WINDOW:i, 2]/12000.0)
             self.motor1_cps_plot.set_ydata(self.data[i-self.PLOT_WINDOW:i, 3]/20000.0)
+            self.motor1_command_plot.set_ydata(self.data[i-self.PLOT_WINDOW:i, 4]/10000.0)
         else:
             self.angle_plot.set_ydata(self.data[:self.PLOT_WINDOW, 1]/512.0)
             self.motor1_counts_plot.set_ydata(self.data[:self.PLOT_WINDOW, 2]/12000.0)
             self.motor1_cps_plot.set_ydata(self.data[:self.PLOT_WINDOW, 3]/20000.0)
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot
+            self.motor1_command_plot.set_ydata(self.data[:self.PLOT_WINDOW, 4]/10000.0)
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
+
     
     
 if __name__ == "__main__":
+    print("timestamp_us, angle_pot, motor1_counts, motor1_cps, motor1_command")
     fig, ax = plt.subplots()
 
     pendcon = PendulumController(ax=ax)
-    pendcon.start_capture()
+    
+    capturethread = pendcon.start_capture()
     
     ani = animation.FuncAnimation(
         fig, pendcon.animate_and_store, init_func=pendcon.init, interval=10, blit=True, frames=pendcon.MAX_DATAPOINTS, repeat=False)
     
     plt.show()
+    
+#    while(capturethread.is_alive):
+#        time.sleep(0.1)
+#    np.savetxt("out.csv", pendcon.data, delimiter=',', header="timestamp_us, angle_pot, motor1_counts, motor1_cps, motor1_command")
+    
+    
+    
+    

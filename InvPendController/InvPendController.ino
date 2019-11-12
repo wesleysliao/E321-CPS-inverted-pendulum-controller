@@ -8,8 +8,8 @@
 // System settings
 //
 
-//set HUMAN_READABLE_SERIAL to 1 for csv serial output
-#define HUMAN_READABLE_SERIAL 0
+//set to 1 for csv serial output instead of raw bytes
+#define HUMAN_READABLE_SERIAL 0 
 
 #define ENABLE_MOTOR1 1
 #define ENABLE_MOTOR2 0
@@ -97,24 +97,47 @@ const int loop_delay_us = 1000000/MOTOR_UPDATE_FREQ_HZ;
 uint32_t loop_start_us = 0;
 uint32_t loop_time = 0;
 
+volatile uint32_t time_offset = 0;
 float time_s = 0;
 
 int32_t angle_pot = 0;
+int32_t angle_pot_offset = 0;
+#define ANGLE_HIST_LEN 4
+uint16_t angle_pot_history[ANGLE_HIST_LEN];
 
 #define MODE_BUTTON_CONTROL 0
 #define MODE_CALIBRATE 1
 #define MODE_UART_CONTROL 2
 #define MODE_COSINE_CONTROL 3
-#define MODE_PID_ANGLE_SPEED_CONTROL 4
-#define MODE_PID_ANGLE_POS_CONTROL 5
+#define MODE_STEP_CONTROL 4
+#define MODE_PID_ANGLE_SPEED_CONTROL 5
+#define MODE_PID_ANGLE_POS_CONTROL 6
+
+#define CALIB_STEP_START 0
+#define CALIB_STEP_ANGLE 1
+#define CALIB_STEP_LEFT_LIM 2
+#define CALIB_STEP_RIGHT_LIM 3
+#define CALIB_STEP_CENTER 4
+#define CALIB_STEP_DONE 5
+
+#define CALIB_ANGLE_TIMEOUT_MS 4000
+#define CALIB_LEFT_TIMEOUT_MS 4000
+#define CALIB_RIGHT_TIMEOUT_MS 6000
+
+byte calibration_step = CALIB_STEP_START;
 
 #if ENABLE_MOTOR1 == 1
-byte motor1_control_mode = 3;
+byte motor1_control_mode = MODE_CALIBRATE;
 
 volatile int32_t motor1_count = 0;
 int32_t motor1_last_count = 0;
 int32_t motor1_count_delta = 0;
+int32_t motor1_left_limit = -2000;
+int32_t motor1_right_limit = 2000;
+
 int32_t motor1_cps = 0;
+int32_t motor1_cps_avg = 0;
+int32_t motor1_cps_kalman = 0;
 #define MOTOR1_HIST_LEN 30
 int32_t motor1_cps_history[MOTOR1_HIST_LEN];
 
@@ -131,6 +154,10 @@ float motor1_kD = 0.00;
 float motor1_cos_mag[MAX_COSINES] =     {0.5, 0.3, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0};
 float motor1_cos_freq_Hz[MAX_COSINES] = {0.5, 0.25, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0};
 float motor1_cos_phase_s[MAX_COSINES] = {2.5, 0.0, 2.5, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+#define MAX_STEPS 8
+float motor1_step_mag[MAX_STEPS] =    {0.5, -0.5, -0.5, 0.5, 0.0, 0.0, 0.0, 0.0};
+float motor1_step_phase_s[MAX_STEPS] =  {1.0, 1.5, 10.0, 10.5, 0.0, 0.0, 0.0, 0.0};
 #endif
 
 #if ENABLE_MOTOR2 == 1
@@ -194,6 +221,11 @@ void init_serial()
 #endif
 }
 
+void init_button_isr()
+{
+    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_USER), reset_time, FALLING);
+}
+
 void init_enc_isr()
 {
 #if ENABLE_MOTOR1 == 1
@@ -209,6 +241,7 @@ void init_enc_isr()
 
 void setup() {
   init_pinmodes();
+  init_button_isr();
   init_enc_isr();
   init_display();
   init_serial();
@@ -221,23 +254,14 @@ void setup() {
 //
 
 unsigned long loop_count = 0;
-
 void loop() {
   loop_time = (micros()-loop_start_us);
   loop_start_us = micros();
 
-  time_s = loop_start_us/1000000.0;
+  time_s = (loop_start_us-time_offset)/1000000.0;
   
-  motor1_count_delta = motor1_count - motor1_last_count;
-  motor1_last_count = motor1_count;
-
-  motor1_cps_history[loop_count % MOTOR1_HIST_LEN] = (motor1_count_delta*MOTOR_UPDATE_FREQ_HZ);
-  motor1_cps = 0;
-  for(int i = 0; i < MOTOR1_HIST_LEN; i++)
-      motor1_cps += motor1_cps_history[i];
-  motor1_cps /= MOTOR1_HIST_LEN;
-  
-  angle_pot = analogRead(PIN_ANGLE_POT)-512;
+  est_motor1_speed();
+  read_angle();
 
   if( digitalRead(PIN_BUTTON_X)==0 ){
     system_enabled = false;    
@@ -268,10 +292,100 @@ void loop() {
 // Update Subroutines
 // 
 
+void read_angle()
+{
+  angle_pot_history[loop_count % ANGLE_HIST_LEN] = analogRead(PIN_ANGLE_POT);
+  angle_pot = 0;
+  for(int i = 0; i < ANGLE_HIST_LEN; i++)
+      angle_pot += angle_pot_history[i];
+  angle_pot /= ANGLE_HIST_LEN;
+  angle_pot = (angle_pot - angle_pot_offset) - 512;
+}
+
+void est_motor1_speed()
+{
+  motor1_count_delta = motor1_count - motor1_last_count;
+  motor1_last_count = motor1_count;
+
+  motor1_cps_history[loop_count % MOTOR1_HIST_LEN] = (motor1_count_delta*MOTOR_UPDATE_FREQ_HZ);
+  motor1_cps = 0;
+  for(int i = 0; i < MOTOR1_HIST_LEN; i++)
+      motor1_cps += motor1_cps_history[i];
+  motor1_cps /= MOTOR1_HIST_LEN;
+}
+
+float stepfn(float t)
+{
+  return 1.0*(t>=0);
+}
+
+uint32_t calib_step_timeout = 0;
 void update_motor_control()
 {
+  float command;
   switch(motor1_control_mode)
   {
+    case MODE_CALIBRATE:
+      switch(calibration_step)
+      {
+        case CALIB_STEP_START:
+          motor1_command = 0;
+          angle_pot_offset = -512;
+          calib_step_timeout = millis() + CALIB_ANGLE_TIMEOUT_MS;
+          calibration_step = CALIB_STEP_ANGLE;
+          break;
+        
+        case CALIB_STEP_ANGLE:
+          motor1_command = 0;
+          if (millis() > calib_step_timeout)
+          {
+            angle_pot_offset = angle_pot;
+            calib_step_timeout = millis() + CALIB_LEFT_TIMEOUT_MS;
+            calibration_step = CALIB_STEP_LEFT_LIM;
+          }
+          break;
+          
+        case CALIB_STEP_LEFT_LIM:
+          motor1_left_limit = motor1_count-1000;
+          motor1_command = -2000;
+          if (millis() > calib_step_timeout)
+          {
+            motor1_left_limit = motor1_count;
+            calib_step_timeout = millis() + CALIB_RIGHT_TIMEOUT_MS;
+            calibration_step = CALIB_STEP_RIGHT_LIM;
+          }
+          break;
+          
+        case CALIB_STEP_RIGHT_LIM:
+          motor1_right_limit = motor1_count+1000;
+          motor1_command = 2000;
+          if (millis() > calib_step_timeout)
+          {
+            motor1_right_limit = motor1_count;
+
+            motor1_right_limit = (motor1_right_limit - motor1_left_limit)/2;
+            motor1_left_limit = -motor1_right_limit;
+            motor1_count = motor1_right_limit;
+            
+            calibration_step = CALIB_STEP_CENTER;
+          }
+          break;
+        case CALIB_STEP_CENTER:
+          motor1_command = -1500;
+          if(motor1_count <= 0)
+          {
+            motor1_command = 0;
+            calibration_step = CALIB_STEP_DONE;
+            Serial.println("READY");
+          }
+          break;
+        case CALIB_STEP_DONE:
+        default:
+          motor1_command = 0;
+          break;
+      }
+      break;
+      
     case MODE_BUTTON_CONTROL:
       if( digitalRead(PIN_BUTTON_PLUS)==0 ){
         motor1_set_ccw();
@@ -281,44 +395,57 @@ void update_motor_control()
         motor1_set_stop();
       }
       
-      analogWrite(PIN_MOTOR1_PWM, angle_pot/4);
+      motor1_command = 1000;
       return;
     
     case MODE_UART_CONTROL:
       return;
     
     case MODE_COSINE_CONTROL:
-      float command;
-      //float time_s;
-      
+
       command = 0;
-      //time_s = (float)(micros()/1000000);
       for( int i = 0; i < MAX_COSINES; i++)
       {
         command += motor1_cos_mag[i] * cos(2*M_PI*motor1_cos_freq_Hz[i]*(time_s+motor1_cos_phase_s[i]));
       }
       motor1_command = (int)(command*10000);
-      motor1_set(motor1_command);
-      return;
-           
+      break;
+     
+    case MODE_STEP_CONTROL:
+      command = 0;
+      for( int i = 0; i < MAX_STEPS; i++)
+      {
+        command += motor1_step_mag[i] * stepfn(time_s - motor1_step_phase_s[i]);
+      }
+      motor1_command = (int)(command*10000);
+      break;
+                
     case MODE_PID_ANGLE_SPEED_CONTROL:
       motor1_setpoint = angle_pot*10;
       motor1_error = motor1_cps - motor1_setpoint;
+            
+      motor1_error_total += motor1_error;
+  
+      motor1_command = (motor1_kP * motor1_error);
+                       //+ (motor1_kI * (float)motor1_error_total)
+                       //+ (motor1_kD * (float)motor1_cps));         
       break;
       
     case MODE_PID_ANGLE_POS_CONTROL:
       motor1_setpoint = angle_pot;
       motor1_error = motor1_count - motor1_setpoint;
+          
+      motor1_error_total += motor1_error;
+  
+      motor1_command = (motor1_kP * motor1_error);
+                       //+ (motor1_kI * (float)motor1_error_total)
+                       //+ (motor1_kD * (float)motor1_cps));
       break;
     }
-    
-    motor1_error_total += motor1_error;
 
-    motor1_command = (motor1_kP * motor1_error);
-                     //+ (motor1_kI * (float)motor1_error_total)
-                     //+ (motor1_kD * (float)motor1_cps));
-                     
+    
     motor1_set(motor1_command);
+
 }
 
 #if ENABLE_DISPLAY == 1
@@ -329,7 +456,11 @@ void update_display()
   
   display.print(angle_pot);
   display.print(" ");
-  display.println(motor1_count);
+  display.print(motor1_count);
+  display.print(" ");
+  display.print(motor1_left_limit);
+  display.print(" ");
+  display.println(motor1_right_limit);
   display.println("+ - X M U A B");
   display.print(digitalRead(PIN_BUTTON_PLUS));
   display.print(" ");
@@ -383,7 +514,7 @@ void serial_write()
 #else
   int32_t printtime = millis();
 
-  byte serialbuffer[20];
+  byte serialbuffer[24];
 
   serialbuffer[0] = (byte) 'A';
   serialbuffer[1] = (byte) 'B';
@@ -413,8 +544,14 @@ void serial_write()
   serialbuffer[17] = writeint32.bytes[2];
   serialbuffer[18] = writeint32.bytes[3];
 
-  serialbuffer[19] = (byte) '\n';
-  Serial.write(serialbuffer, 20);
+  writeint32.value = motor1_command;
+  serialbuffer[19] = writeint32.bytes[0];
+  serialbuffer[20] = writeint32.bytes[1];
+  serialbuffer[21] = writeint32.bytes[2];
+  serialbuffer[22] = writeint32.bytes[3];
+
+  serialbuffer[23] = (byte) '\n';
+  Serial.write(serialbuffer, 24);
   
 #endif
 }
@@ -455,10 +592,9 @@ void serial_read()
             break;
               
           case MODE_CALIBRATE:
-            Serial.println("CALIBRATE");
-            delay(500);
+            Serial.println("CALIBRATING");
             motor1_control_mode = MODE_CALIBRATE;
-            Serial.println("READY");
+            calibration_step = CALIB_STEP_START;
             break;
             
           case MODE_UART_CONTROL:
@@ -540,12 +676,12 @@ void serial_read()
 #if ENABLE_MOTOR1 == 1
 void motor1_set(signed int command)
 {
-  if(command == 0){
-    motor1_set_stop();
-  } else if (command >0) {
+  if(command < 0 && motor1_count > motor1_left_limit){
+    motor1_set_cw();
+  } else if (command > 0 &&motor1_count < motor1_right_limit) {
     motor1_set_ccw();
   } else {
-    motor1_set_cw();            
+    motor1_set_stop();  
   }
   analogWrite(PIN_MOTOR1_PWM, desired_cps_to_motor1(abs(command)));
 }
@@ -598,6 +734,11 @@ void motor2_set_ccw()
 //
 // Interrupt Service Routines
 // 
+
+void reset_time()
+{
+  time_offset = micros();
+}
 
 #if ENABLE_MOTOR1 == 1
 //Positive direction is defined as the A phase lead direction
