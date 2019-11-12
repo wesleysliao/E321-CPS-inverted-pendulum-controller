@@ -96,6 +96,7 @@ bool system_enabled = true;
 const int loop_delay_us = 1000000/MOTOR_UPDATE_FREQ_HZ;
 uint32_t loop_start_us = 0;
 uint32_t loop_time = 0;
+int32_t time_remainder = 0;
 
 volatile uint32_t time_offset = 0;
 float time_s = 0;
@@ -122,9 +123,9 @@ uint16_t angle_pot_history[ANGLE_HIST_LEN];
 
 #define CALIB_ANGLE_TIMEOUT_MS 4000
 #define CALIB_LEFT_TIMEOUT_MS 4000
-#define CALIB_RIGHT_TIMEOUT_MS 6000
+#define CALIB_RIGHT_TIMEOUT_MS 4000
 
-byte calibration_step = CALIB_STEP_START;
+byte calibration_step = CALIB_STEP_DONE;
 
 #if ENABLE_MOTOR1 == 1
 byte motor1_control_mode = MODE_CALIBRATE;
@@ -137,7 +138,6 @@ int32_t motor1_right_limit = 2000;
 
 int32_t motor1_cps = 0;
 int32_t motor1_cps_avg = 0;
-int32_t motor1_cps_kalman = 0;
 #define MOTOR1_HIST_LEN 30
 int32_t motor1_cps_history[MOTOR1_HIST_LEN];
 
@@ -151,7 +151,7 @@ float motor1_kI = 0.00;
 float motor1_kD = 0.00;
 
 #define MAX_COSINES 8
-float motor1_cos_mag[MAX_COSINES] =     {0.5, 0.3, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0};
+float motor1_cos_mag[MAX_COSINES] =     {0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0};
 float motor1_cos_freq_Hz[MAX_COSINES] = {0.5, 0.25, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0};
 float motor1_cos_phase_s[MAX_COSINES] = {2.5, 0.0, 2.5, 0.0, 0.0, 0.0, 0.0, 0.0};
 
@@ -285,7 +285,8 @@ void loop() {
 #endif
 
   loop_count++;
-  delayMicroseconds(loop_delay_us - (micros()-loop_start_us) - TIMING_OVERHEAD_us);
+  time_remainder = loop_delay_us - (micros()-loop_start_us) - TIMING_OVERHEAD_us;
+  delayMicroseconds(time_remainder);
 }
 
 //
@@ -299,7 +300,7 @@ void read_angle()
   for(int i = 0; i < ANGLE_HIST_LEN; i++)
       angle_pot += angle_pot_history[i];
   angle_pot /= ANGLE_HIST_LEN;
-  angle_pot = (angle_pot - angle_pot_offset) - 512;
+  angle_pot = (angle_pot - 512) - angle_pot_offset;
 }
 
 void est_motor1_speed()
@@ -330,7 +331,7 @@ void update_motor_control()
       {
         case CALIB_STEP_START:
           motor1_command = 0;
-          angle_pot_offset = -512;
+          angle_pot_offset = 0;
           calib_step_timeout = millis() + CALIB_ANGLE_TIMEOUT_MS;
           calibration_step = CALIB_STEP_ANGLE;
           break;
@@ -347,7 +348,7 @@ void update_motor_control()
           
         case CALIB_STEP_LEFT_LIM:
           motor1_left_limit = motor1_count-1000;
-          motor1_command = -2000;
+          motor1_command = -2500;
           if (millis() > calib_step_timeout)
           {
             motor1_left_limit = motor1_count;
@@ -358,9 +359,10 @@ void update_motor_control()
           
         case CALIB_STEP_RIGHT_LIM:
           motor1_right_limit = motor1_count+1000;
-          motor1_command = 2000;
+          motor1_command = 2500;
           if (millis() > calib_step_timeout)
           {
+            noInterrupts();
             motor1_right_limit = motor1_count;
 
             motor1_right_limit = (motor1_right_limit - motor1_left_limit)/2;
@@ -368,10 +370,11 @@ void update_motor_control()
             motor1_count = motor1_right_limit;
             
             calibration_step = CALIB_STEP_CENTER;
+            interrupts();
           }
           break;
         case CALIB_STEP_CENTER:
-          motor1_command = -1500;
+          motor1_command = -2000;
           if(motor1_count <= 0)
           {
             motor1_command = 0;
@@ -479,7 +482,10 @@ void update_display()
 
   display.println(motor1_command);
   display.println(motor1_cps);
-  display.println(loop_time);
+  display.print(loop_time);
+  display.print(' ');
+  display.print((int)(100*(1.0-((float)time_remainder/(float)loop_time))));
+  display.println("% load");
   display.println(time_s);
 
   display.display();
@@ -519,13 +525,13 @@ void serial_write()
   serialbuffer[0] = (byte) 'A';
   serialbuffer[1] = (byte) 'B';
   serialbuffer[2] = (byte) 'C';
-  
+
   writeint32.value = printtime;
   serialbuffer[3] = writeint32.bytes[0];
   serialbuffer[4] = writeint32.bytes[1];
   serialbuffer[5] = writeint32.bytes[2];
   serialbuffer[6] = writeint32.bytes[3];
-  
+
   writeint32.value = angle_pot;
   serialbuffer[7] = writeint32.bytes[0];
   serialbuffer[8] = writeint32.bytes[1];
