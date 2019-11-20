@@ -20,24 +20,52 @@ class PenConGui(object):
     def __init__(self):
         self.fig = plt.figure(tight_layout=False)
         
-        gs = GridSpec(4, 6, figure=self.fig, height_ratios=[.4,.4,.1,.1])
+        gs = GridSpec(7, 6, figure=self.fig, height_ratios=[.2,.2,.2, 0.05, 0.05, 0.05, 0.05],
+                      top=.99, bottom=0.01, left=0.05, right=0.99,
+                      wspace=0.05, hspace=0.05)
         
-        self.ax_position = self.fig.add_subplot(gs[:1, :])
-        self.ax_position.set_ylim([-0.5, 0.50])
-        
-        self.ax_velocity = self.fig.add_subplot(gs[1:2, :])
+        self.ax_velocity = self.fig.add_subplot(gs[2, :])
+        self.ax_velocity.ticklabel_format(axis="x", style="plain")
         self.ax_velocity.set_ylim([-2, 2])
+        
+        self.ax_angle = self.fig.add_subplot(gs[0, :], sharex=self.ax_velocity)
+        plt.setp(self.ax_angle.get_xticklabels(), visible=False)
+        self.ax_angle.set_ylim([-math.pi, math.pi])
+        self.ax_angle.set_ymargin(0.0)
+
+        self.ax_position = self.fig.add_subplot(gs[1, :], sharex=self.ax_velocity)
+        plt.setp(self.ax_position.get_xticklabels(), visible=False)
+        self.ax_position.set_ylim([-0.5, 0.5])
+        self.ax_position.set_ymargin(0.0)
+        
                 
-        self.ax_notebox = self.fig.add_subplot(gs[2:3, :])
+        self.ax_durationbox = self.fig.add_subplot(gs[4, 1:2])
+        self.textbox_duration = TextBox(self.ax_durationbox, label="Duration (s):  ", initial="10")
+        
+        self.ax_notebox = self.fig.add_subplot(gs[5, 1])
         self.textbox_note = TextBox(self.ax_notebox, label=None, initial="Notes")
         
         
-        self.ax_button_record = self.fig.add_subplot(gs[-1, :1])
-        self.ax_button_disable = self.fig.add_subplot(gs[-1, 1:2])
-        self.ax_button_cosine = self.fig.add_subplot(gs[-1, 2:3])
-        self.ax_button_step = self.fig.add_subplot(gs[-1, 3:4])
-        self.ax_button_calib = self.fig.add_subplot(gs[-1, 4:5])
-        self.ax_button_exit = self.fig.add_subplot(gs[-1, 5:])
+        self.ax_button_cosine = self.fig.add_subplot(gs[4, 2])
+        self.ax_cosbox = self.fig.add_subplot(gs[4, 3:])
+        self.textbox_cos = TextBox(self.ax_cosbox, label=None, initial="[(0.4, 10, 0)]")
+        
+        self.ax_button_step = self.fig.add_subplot(gs[5, 2])
+        self.ax_stepbox = self.fig.add_subplot(gs[5, 3:])
+        self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5), (.5, 10), (-.5, 10.5)]")
+        
+        
+        self.ax_button_pid = self.fig.add_subplot(gs[6, 2])
+        self.button_pid = Button(self.ax_button_pid, 'PID')
+        self.ax_pidbox = self.fig.add_subplot(gs[6, 3:5])       
+        self.textbox_pid = TextBox(self.ax_pidbox, label=None, initial="[0.4, 10, 0]")
+
+        
+        self.ax_button_record = self.fig.add_subplot(gs[5, 0])
+        self.ax_button_disable = self.fig.add_subplot(gs[6, 0])
+        
+        self.ax_button_calib = self.fig.add_subplot(gs[6, 1])
+        self.ax_button_exit = self.fig.add_subplot(gs[6, 5])
         
         self.button_record = Button(self.ax_button_record, 'Record')
         self.button_record.hovercolor = "red"
@@ -96,9 +124,8 @@ class PendulumController(object):
         
         
         x = np.arange(0, self.PLOT_WINDOW)
-        self.motor1_counts_plot, = self.gui.ax_position.plot(x, x)
-        self.angle_plot, = self.gui.ax_position.plot(x, x)
-        self.gui.ax_position.legend(["Cart", "Endpoint"])
+        self.motor1_counts_plot, = self.gui.ax_position.plot(x, x, color='blue')
+        self.angle_plot, = self.gui.ax_angle.plot(x, x, color='red')
         
         self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, x)
         self.motor1_command_plot, = self.gui.ax_velocity.plot(x, x)
@@ -106,10 +133,16 @@ class PendulumController(object):
         self.ani = animation.FuncAnimation(self.gui.fig, 
                                            self.animate_and_store, 
                                            init_func=self.init, 
-                                           interval=100,
+                                           interval=200,
                                            blit=False,
                                            frames=self.data_write_loop, 
                                            repeat=True)
+        
+        
+        
+        self.gui.ax_angle.legend(["Pendulum Angle (radians)"], loc="upper left")
+        self.gui.ax_position.legend(["Cart X position (meters)"], loc="upper left")
+        self.gui.ax_velocity.legend(["Motor Velocity (counts/second)", "Motor Command"], loc="upper left")
     
         self.dataqueue = queue.Queue(maxsize=self.PLOT_WINDOW)
         self.plotdata = np.empty((self.PLOT_WINDOW, 5))
@@ -159,7 +192,7 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def cosine_button_cb(self, event):
-        self.set_cosine_mode(self.cosines)
+        self.set_cosine_mode(eval(self.gui.textbox_cos.text))
         self.action_enable()
         self.action_reset_clock()
         
@@ -173,17 +206,20 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def step_button_cb(self, event):
-        self.set_step_mode(self.step_fns)
+        self.set_step_mode(eval(self.gui.textbox_step.text))
         self.action_enable()
         self.action_reset_clock()
     
     def record_button_cb(self, event):
-        self.action_enable()
         self.action_reset_clock()
+        
+        self.action_enable()
         
         self.gui.button_record.set_active(False)
         
         self.record_count = 0;
+        self.MAX_DATAPOINTS = 100 * int(eval(self.gui.textbox_duration.text))
+        self.recorddata = np.empty((self.MAX_DATAPOINTS, 5))
         self.recording.set()
         
     
@@ -276,15 +312,16 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
     
     def animate_and_store(self, data):
-        self.gui.ax_position.set_xlim([data[-1, 0]-(self.PLOT_WINDOW*0.01), data[-1, 0]])
-        self.angle_plot.set_data(data[:,0],np.sin(data[:,1])*self.PENDULUM_LENGTH_M)
-        self.motor1_counts_plot.set_data(data[:,0], data[:,2])
-#        self.angle_plot.set_ydata(np.sin(data[:,1])*self.PENDULUM_LENGTH_M)
-#        self.motor1_counts_plot.set_ydata(data[:,2])
-        self.motor1_cps_plot.set_ydata(data[:,3])
-        self.motor1_command_plot.set_ydata(data[:,4])
+        self.gui.ax_velocity.set_xlim([data[0, 0], data[-1, 0]])
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.gui.ax_position
+        self.angle_plot.set_data(data[:,0], data[:,1])
+
+        self.motor1_counts_plot.set_data(data[:,0], data[:,2])
+
+        self.motor1_cps_plot.set_data(data[:,0], data[:,3])
+        self.motor1_command_plot.set_data(data[:,0], data[:,4])
+        
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.gui.ax_velocity
     
 if __name__ == "__main__":
     pendcon = PendulumController(port="COM10",
