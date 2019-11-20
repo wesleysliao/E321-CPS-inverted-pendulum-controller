@@ -18,7 +18,7 @@ mplstyle.use('fast')
 class PenConGui(object):
     
     def __init__(self):
-        self.fig = plt.figure(tight_layout=False)
+        self.fig = plt.figure(tight_layout=False, dpi=192)
         
         gs = GridSpec(7, 6, figure=self.fig, height_ratios=[.2,.2,.2, 0.05, 0.05, 0.05, 0.05],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
@@ -39,10 +39,10 @@ class PenConGui(object):
         self.ax_position.set_ymargin(0.0)
         
                 
-        self.ax_durationbox = self.fig.add_subplot(gs[4, 1:2])
-        self.textbox_duration = TextBox(self.ax_durationbox, label="Duration (s):  ", initial="10")
+        self.ax_durationbox = self.fig.add_subplot(gs[5, 1])
+        self.textbox_duration = TextBox(self.ax_durationbox, label=None, initial="10")
         
-        self.ax_notebox = self.fig.add_subplot(gs[5, 1])
+        self.ax_notebox = self.fig.add_subplot(gs[4, :2])
         self.textbox_note = TextBox(self.ax_notebox, label=None, initial="Notes")
         
         
@@ -74,6 +74,20 @@ class PenConGui(object):
         self.button_step = Button(self.ax_button_step, 'Step')
         self.button_calib = Button(self.ax_button_calib, 'Calibrate')    
         self.button_exit = Button(self.ax_button_exit, 'Exit')
+    
+    def set_mode_color(self, active_button):
+        self.button_cosine.color = "lightgrey"
+        self.button_step.color = "lightgrey"
+        self.button_pid.color = "lightgrey"
+        self.button_calib.color = "lightgrey"
+        
+        self.button_cosine.hovercolor = "whitesmoke"
+        self.button_step.hovercolor = "whitesmoke"
+        self.button_pid.hovercolor = "whitesmoke"
+        self.button_calib.hovercolor = "whitesmoke"
+        
+        active_button.color = "limegreen"
+        active_button.hovercolor = "lightgreen"
 
 
 class PendulumController(object):
@@ -100,27 +114,26 @@ class PendulumController(object):
     STATUS_FORMAT = "<fiiiic"
     STATUS_LENGTH = struct.calcsize(STATUS_FORMAT)+len(STATUS_HEADER)
     
+    DATA_RATE_HZ = 100
     MAX_DATAPOINTS = 1000
-    PLOT_WINDOW = 100
+    PLOT_WINDOW = 200
     
-    def __init__(self, port='COM1', cosines=[(0,0,0)], step_fns=[(0,0)]):
+    def __init__(self, port='COM1'):
         self.ser = serial.Serial(port=port,
                             baudrate=115200,
                             bytesize=8,
                             parity='N',
                             stopbits=1,
                             timeout=None)
-        
-        self.cosines = cosines
-        self.step_fns = step_fns
 
         self.gui = PenConGui()
         self.gui.button_record.on_clicked(self.record_button_cb)
         self.gui.button_disable.on_clicked(self.action_disable)
         self.gui.button_step.on_clicked(self.step_button_cb)
-        self.gui.button_calib.on_clicked(self.calibrate)
+        self.gui.button_calib.on_clicked(self.calib_button_cb)
         self.gui.button_exit.on_clicked(self.shutdown)
         self.gui.button_cosine.on_clicked(self.cosine_button_cb)
+        self.gui.button_pid.on_clicked(self.pid_button_cb)
         
         
         x = np.arange(0, self.PLOT_WINDOW)
@@ -133,12 +146,10 @@ class PendulumController(object):
         self.ani = animation.FuncAnimation(self.gui.fig, 
                                            self.animate_and_store, 
                                            init_func=self.init, 
-                                           interval=200,
-                                           blit=False,
+                                           interval=50,
+                                           blit=True,
                                            frames=self.data_write_loop, 
                                            repeat=True)
-        
-        
         
         self.gui.ax_angle.legend(["Pendulum Angle (radians)"], loc="upper left")
         self.gui.ax_position.legend(["Cart X position (meters)"], loc="upper left")
@@ -175,6 +186,10 @@ class PendulumController(object):
         self.ser.write(self.MESSAGE_HEADER)
         self.ser.write(self.MODE_CALIBRATE)
         self.ser.write(b'\n')
+    
+    def calib_button_cb(self, event):
+        self.gui.set_mode_color(self.gui.button_calib)
+        self.calibrate()
         
     def set_motor_speed(self, normalized_speed):
         self.ser.write(self.MESSAGE_HEADER)
@@ -192,6 +207,7 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def cosine_button_cb(self, event):
+        self.gui.set_mode_color(self.gui.button_cosine)
         self.set_cosine_mode(eval(self.gui.textbox_cos.text))
         self.action_enable()
         self.action_reset_clock()
@@ -206,6 +222,7 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def step_button_cb(self, event):
+        self.gui.set_mode_color(self.gui.button_step)
         self.set_step_mode(eval(self.gui.textbox_step.text))
         self.action_enable()
         self.action_reset_clock()
@@ -218,7 +235,7 @@ class PendulumController(object):
         self.gui.button_record.set_active(False)
         
         self.record_count = 0;
-        self.MAX_DATAPOINTS = 100 * int(eval(self.gui.textbox_duration.text))
+        self.MAX_DATAPOINTS = self.DATA_RATE_HZ * int(eval(self.gui.textbox_duration.text))
         self.recorddata = np.empty((self.MAX_DATAPOINTS, 5))
         self.recording.set()
         
@@ -252,6 +269,9 @@ class PendulumController(object):
         self.ser.write(self.MODE_PID_ANGLE_POS_CONTROL)
         self.ser.write(bytes(struct.pack('fff', kP, kI, kD)))
         self.ser.write(b'\n')
+    
+    def pid_button_cb(self, event):
+        self.gui.set_mode_color(self.gui.button_pid)
     
     def serial_read_loop(self):
         while(not self.stopping.wait(0.0)):
@@ -312,7 +332,7 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
     
     def animate_and_store(self, data):
-        self.gui.ax_velocity.set_xlim([data[0, 0], data[-1, 0]])
+        self.gui.ax_velocity.set_xlim([data[-1, 0]-(self.PLOT_WINDOW/self.DATA_RATE_HZ), data[-1, 0]])
         
         self.angle_plot.set_data(data[:,0], data[:,1])
 
@@ -324,6 +344,5 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.gui.ax_velocity
     
 if __name__ == "__main__":
-    pendcon = PendulumController(port="COM10",
-                                 cosines=[(0.4, 10, 0)], step_fns=[(0.5, 1), (-0.5, 1.5), (0.5, 10), (-0.5, 10.5)])
+    pendcon = PendulumController(port="COM10")
     plt.show()

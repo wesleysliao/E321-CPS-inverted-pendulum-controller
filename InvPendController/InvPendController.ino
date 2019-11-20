@@ -16,11 +16,11 @@
 
 #define ENABLE_DISPLAY 0
 
-#define MOTOR_UPDATE_FREQ_HZ 1000
-#define SERIAL_UPDATE_FACTOR 10
+#define MOTOR_UPDATE_FREQ_HZ 500
+#define SERIAL_UPDATE_FACTOR 5
 #define SCREEN_UPDATE_FACTOR 50
 
-#define TIMING_OVERHEAD_us 2
+#define TIMING_OVERHEAD_us 4
 //
 // Definitions for STM32 pin equivalents
 //
@@ -526,19 +526,12 @@ void serial_write()
   Serial.println(motor1_cps);
   
 #else
-//  int32_t printtime = millis();
 
   byte serialbuffer[24];
 
   serialbuffer[0] = (byte) 'A';
   serialbuffer[1] = (byte) 'B';
   serialbuffer[2] = (byte) 'C';
-
-//  writeint32.value = printtime;
-//  serialbuffer[3] = writeint32.bytes[0];
-//  serialbuffer[4] = writeint32.bytes[1];
-//  serialbuffer[5] = writeint32.bytes[2];
-//  serialbuffer[6] = writeint32.bytes[3];
 
   writefloat.value = time_s;
   serialbuffer[3] = writefloat.bytes[0];
