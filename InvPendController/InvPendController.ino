@@ -14,11 +14,11 @@
 #define ENABLE_MOTOR1 1
 #define ENABLE_MOTOR2 0
 
-#define ENABLE_DISPLAY 1
+#define ENABLE_DISPLAY 0
 
 #define MOTOR_UPDATE_FREQ_HZ 1000
 #define SERIAL_UPDATE_FACTOR 10
-#define SCREEN_UPDATE_FACTOR 5
+#define SCREEN_UPDATE_FACTOR 50
 
 #define TIMING_OVERHEAD_us 2
 //
@@ -113,6 +113,11 @@ uint16_t angle_pot_history[ANGLE_HIST_LEN];
 #define MODE_STEP_CONTROL 4
 #define MODE_PID_ANGLE_SPEED_CONTROL 5
 #define MODE_PID_ANGLE_POS_CONTROL 6
+
+#define ACTION_CODE 10
+#define ACTION_DISABLE 0
+#define ACTION_ENABLE 1
+#define ACTION_RESET_CLOCK 2
 
 #define CALIB_STEP_START 0
 #define CALIB_STEP_ANGLE 1
@@ -280,7 +285,7 @@ void loop() {
     serial_read();
     
 #if ENABLE_DISPLAY == 1
-  if(loop_count % SCREEN_UPDATE_FACTOR == 2) 
+  if(loop_count % SCREEN_UPDATE_FACTOR == 0) 
     update_display();
 #endif
 
@@ -363,14 +368,14 @@ void update_motor_control()
           if (millis() > calib_step_timeout)
           {
             noInterrupts();
-            motor1_right_limit = motor1_count;
-
-            motor1_right_limit = (motor1_right_limit - motor1_left_limit)/2;
+            motor1_right_limit = (motor1_count - motor1_left_limit)/2;
             motor1_left_limit = -motor1_right_limit;
+
             motor1_count = motor1_right_limit;
+            interrupts();     
             
             calibration_step = CALIB_STEP_CENTER;
-            interrupts();
+
           }
           break;
         case CALIB_STEP_CENTER:
@@ -379,7 +384,9 @@ void update_motor_control()
           {
             motor1_command = 0;
             calibration_step = CALIB_STEP_DONE;
+#if HUMAN_READABLE_SERIAL == 1
             Serial.println("READY");
+#endif
           }
           break;
         case CALIB_STEP_DONE:
@@ -505,6 +512,7 @@ typedef union
 } INT32UNION_t;
 
 INT32UNION_t writeint32;
+FLOATUNION_t writefloat;
 void serial_write()
 {
 #if HUMAN_READABLE_SERIAL == 1
@@ -518,7 +526,7 @@ void serial_write()
   Serial.println(motor1_cps);
   
 #else
-  int32_t printtime = millis();
+//  int32_t printtime = millis();
 
   byte serialbuffer[24];
 
@@ -526,11 +534,17 @@ void serial_write()
   serialbuffer[1] = (byte) 'B';
   serialbuffer[2] = (byte) 'C';
 
-  writeint32.value = printtime;
-  serialbuffer[3] = writeint32.bytes[0];
-  serialbuffer[4] = writeint32.bytes[1];
-  serialbuffer[5] = writeint32.bytes[2];
-  serialbuffer[6] = writeint32.bytes[3];
+//  writeint32.value = printtime;
+//  serialbuffer[3] = writeint32.bytes[0];
+//  serialbuffer[4] = writeint32.bytes[1];
+//  serialbuffer[5] = writeint32.bytes[2];
+//  serialbuffer[6] = writeint32.bytes[3];
+
+  writefloat.value = time_s;
+  serialbuffer[3] = writefloat.bytes[0];
+  serialbuffer[4] = writefloat.bytes[1];
+  serialbuffer[5] = writefloat.bytes[2];
+  serialbuffer[6] = writefloat.bytes[3];
 
   writeint32.value = angle_pot;
   serialbuffer[7] = writeint32.bytes[0];
@@ -558,6 +572,7 @@ void serial_write()
 
   serialbuffer[23] = (byte) '\n';
   Serial.write(serialbuffer, 24);
+  //Serial.flush();
   
 #endif
 }
@@ -593,12 +608,29 @@ void serial_read()
       {
         Serial.print("Recieved command ");
         switch(Serial.read()){
+          case ACTION_CODE:
+            switch(Serial.read())
+            {
+              case ACTION_DISABLE:
+                system_enabled = false;
+                break;
+              case ACTION_ENABLE:
+                system_enabled = true;
+                break;
+              case ACTION_RESET_CLOCK:
+                reset_time();
+                break;
+            }
+            break;
           case MODE_BUTTON_CONTROL:
             motor1_control_mode = MODE_BUTTON_CONTROL;
             break;
               
           case MODE_CALIBRATE:
+
+#if HUMAN_READABLE_SERIAL == 1
             Serial.println("CALIBRATING");
+#endif
             motor1_control_mode = MODE_CALIBRATE;
             calibration_step = CALIB_STEP_START;
             break;
@@ -610,7 +642,10 @@ void serial_read()
             break;
             
           case MODE_COSINE_CONTROL:
+
+#if HUMAN_READABLE_SERIAL == 1
             Serial.print("COSINE control ");
+#endif
             motor1_control_mode = MODE_COSINE_CONTROL;
             
             for(int cosine = 0; cosine < MAX_COSINES; cosine++)
@@ -620,13 +655,14 @@ void serial_read()
               motor1_cos_mag[cosine] = ((float*)readbuffer)[0];
               motor1_cos_freq_Hz[cosine] = ((float*)readbuffer)[1];
               motor1_cos_phase_s[cosine] = ((float*)readbuffer)[2];
-              
+
+#if HUMAN_READABLE_SERIAL == 1         
               Serial.print(motor1_cos_mag[cosine]);
               Serial.print(" ");
               Serial.print(motor1_cos_freq_Hz[cosine]);
               Serial.print(" ");
               Serial.println(motor1_cos_phase_s[cosine]);
-              
+#endif             
               if(Serial.peek()=='\n') //Full the rest with 0s if the message is ended
                 for(int i = cosine+1; i < MAX_COSINES; i++)
                 {
@@ -636,7 +672,8 @@ void serial_read()
                 }
                 break;
             }
-            
+ 
+#if HUMAN_READABLE_SERIAL == 1           
             for(int cosine = 0; cosine < MAX_COSINES; cosine++)
             {
               Serial.print(motor1_cos_mag[cosine]);
@@ -645,6 +682,45 @@ void serial_read()
               Serial.print(" ");
               Serial.println(motor1_cos_phase_s[cosine]);
             }
+#endif
+            break;
+
+          case MODE_STEP_CONTROL:
+
+#if HUMAN_READABLE_SERIAL == 1
+            Serial.print("STEP control ");
+#endif
+            motor1_control_mode = MODE_STEP_CONTROL;
+            
+            for(int step_fn = 0; step_fn < MAX_STEPS; step_fn++)
+            {
+              for(int i = 0; i < 8; i++)
+                readbuffer[i] = Serial.read();
+              motor1_step_mag[step_fn] = ((float*)readbuffer)[0];
+              motor1_step_phase_s[step_fn] = ((float*)readbuffer)[1];
+
+#if HUMAN_READABLE_SERIAL == 1         
+              Serial.print(motor1_step_mag[step_fn]);
+              Serial.print(" ");
+              Serial.println(motor1_step_phase_s[step_fn]);
+#endif             
+              if(Serial.peek()=='\n') //Full the rest with 0s if the message is ended
+                for(int i = step_fn+1; i < MAX_STEPS; i++)
+                {
+                  motor1_step_mag[i] = 0.0;
+                  motor1_step_phase_s[i] = 0.0;
+                }
+                break;
+            }
+ 
+#if HUMAN_READABLE_SERIAL == 1           
+            for(int step_fn = 0; step_fn < MAX_STEPS; step_fn++)
+            {
+              Serial.print(motor1_cos_mag[step_fn]);
+              Serial.print(" ");
+              Serial.println(motor1_cos_phase_s[step_fn]);
+            }
+#endif
             break;
             
           case MODE_PID_ANGLE_SPEED_CONTROL:
