@@ -20,7 +20,7 @@ class PenConGui(object):
     def __init__(self):
         self.fig = plt.figure(tight_layout=False, dpi=192)
         
-        gs = GridSpec(7, 6, figure=self.fig, height_ratios=[.2,.2,.2, 0.05, 0.05, 0.05, 0.05],
+        gs = GridSpec(7, 8, figure=self.fig, height_ratios=[.2,.2,.2, 0.05, 0.05, 0.05, 0.05],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
                       wspace=0.05, hspace=0.05)
         
@@ -47,32 +47,36 @@ class PenConGui(object):
         
         
         self.ax_button_cosine = self.fig.add_subplot(gs[4, 2])
-        self.ax_cosbox = self.fig.add_subplot(gs[4, 3:])
+        self.ax_button_cosine_pid = self.fig.add_subplot(gs[4, 3])
+        self.ax_cosbox = self.fig.add_subplot(gs[4, 4:])
         self.textbox_cos = TextBox(self.ax_cosbox, label=None, initial="[(0.4, 10, 0)]")
         
         self.ax_button_step = self.fig.add_subplot(gs[5, 2])
-        self.ax_stepbox = self.fig.add_subplot(gs[5, 3:])
+        self.ax_button_step_pid = self.fig.add_subplot(gs[5, 3])
+        self.ax_stepbox = self.fig.add_subplot(gs[5, 4:])
         self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5),(-.5, 10), (.5, 10.5)]")
         
         
         self.ax_button_pid = self.fig.add_subplot(gs[6, 2])
-        self.button_pid = Button(self.ax_button_pid, 'PID')
-        self.ax_pidbox = self.fig.add_subplot(gs[6, 3:5])       
+        self.button_pid = Button(self.ax_button_pid, 'Set Gains')
+        self.ax_pidbox = self.fig.add_subplot(gs[6, 3:])       
         self.textbox_pid = TextBox(self.ax_pidbox, label=None, initial="[0.4, 10, 0]")
 
         self.ax_button_record = self.fig.add_subplot(gs[5, 0])
         self.ax_button_disable = self.fig.add_subplot(gs[6, 0])
         
         self.ax_button_calib = self.fig.add_subplot(gs[6, 1])
-        self.ax_button_exit = self.fig.add_subplot(gs[6, 5])
+        #self.ax_button_exit = self.fig.add_subplot(gs[6, 5])
         
         self.button_record = Button(self.ax_button_record, 'Record')
         self.button_record.hovercolor = "red"
         self.button_disable = Button(self.ax_button_disable, 'Disable')
         self.button_cosine = Button(self.ax_button_cosine, 'Cosine')
+        self.button_cosine_pid = Button(self.ax_button_cosine_pid, 'Cos (PID)')
         self.button_step = Button(self.ax_button_step, 'Step')
+        self.button_step_pid = Button(self.ax_button_step_pid, 'Step (PID)')
         self.button_calib = Button(self.ax_button_calib, 'Calibrate')    
-        self.button_exit = Button(self.ax_button_exit, 'Exit')
+        #self.button_exit = Button(self.ax_button_exit, 'Exit')
     
     def set_mode_color(self, active_button):
         self.button_cosine.color = "lightgrey"
@@ -115,7 +119,7 @@ class PendulumController(object):
     
     DATA_RATE_HZ = 100
     MAX_DATAPOINTS = 1000
-    PLOT_WINDOW = 200
+    PLOT_WINDOW = 400
     
     def __init__(self, port='COM1'):
         self.ser = serial.Serial(port=port,
@@ -130,7 +134,7 @@ class PendulumController(object):
         self.gui.button_disable.on_clicked(self.action_disable)
         self.gui.button_step.on_clicked(self.step_button_cb)
         self.gui.button_calib.on_clicked(self.calib_button_cb)
-        self.gui.button_exit.on_clicked(self.shutdown)
+        #self.gui.button_exit.on_clicked(self.shutdown)
         self.gui.fig.canvas.mpl_connect('close_event', self.shutdown)
         self.gui.button_cosine.on_clicked(self.cosine_button_cb)
         self.gui.button_pid.on_clicked(self.pid_button_cb)
@@ -143,18 +147,19 @@ class PendulumController(object):
         
         self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, y)
         self.motor1_command_plot, = self.gui.ax_velocity.plot(x, y)
+        self.motor1_setpoint_plot, = self.gui.ax_velocity.plot(x, y)
         
         self.ani = animation.FuncAnimation(self.gui.fig, 
-                                           self.animate_and_store, 
+                                           self.animate, 
                                            init_func=self.init, 
-                                           interval=60,
+                                           interval=30,
                                            blit=True,
                                            frames=self.data_write_loop, 
                                            repeat=True)
         
         self.gui.ax_angle.legend(["Pendulum Angle (radians)"], loc="upper left")
         self.gui.ax_position.legend(["Cart X position (meters)"], loc="upper left")
-        self.gui.ax_velocity.legend(["Motor Velocity (counts/second)", "Motor Command"], loc="upper left")
+        self.gui.ax_velocity.legend(["Motor Velocity (counts/second)", "Motor Command", "PID Setpoint"], loc="upper left")
     
         self.dataqueue = queue.Queue(maxsize=self.PLOT_WINDOW)
         self.plotdata = np.empty((self.PLOT_WINDOW, 5))
@@ -332,18 +337,20 @@ class PendulumController(object):
         self.motor1_counts_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_cps_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_command_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
+        self.motor1_setpoint_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
     
-    def animate_and_store(self, data):
+    def animate(self, data):
         self.angle_plot.set_ydata(data[:,1])
 
         self.motor1_counts_plot.set_ydata(data[:,2])
 
         self.motor1_cps_plot.set_ydata(data[:,3])
         self.motor1_command_plot.set_ydata(data[:,4])
+        self.motor1_setpoint_plot.set_ydata(data[:,4])
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
     
 if __name__ == "__main__":
     pendcon = PendulumController(port="COM7")
