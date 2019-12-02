@@ -18,54 +18,59 @@ mplstyle.use('fast')
 class PenConGui(object):
     
     def __init__(self):
-        self.fig = plt.figure(tight_layout=False, dpi=192)
+        self.controlfig = plt.figure(tight_layout=False, dpi=192)
+        self.plotfig =plt.figure(tight_layout=False, dpi=192)
         
-        gs = GridSpec(7, 8, figure=self.fig, height_ratios=[.2,.2,.2, 0.05, 0.05, 0.05, 0.05],
+        pgs = GridSpec(3, 1, figure=self.plotfig, height_ratios=[1,1,1],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
                       wspace=0.05, hspace=0.05)
         
-        self.ax_velocity = self.fig.add_subplot(gs[2, :])
+        cgs = GridSpec(3, 8, figure=self.controlfig, height_ratios=[0.25, 0.25, 0.25],
+                      top=.99, bottom=0.01, left=0.05, right=0.99,
+                      wspace=0.05, hspace=0.05)
+        
+        self.ax_velocity = self.plotfig.add_subplot(pgs[2, :])
         self.ax_velocity.ticklabel_format(axis="x", style="plain")
         self.ax_velocity.set_ylim([-10000, 10000])
         
-        self.ax_angle = self.fig.add_subplot(gs[0, :], sharex=self.ax_velocity)
+        self.ax_angle = self.plotfig.add_subplot(pgs[0, :], sharex=self.ax_velocity)
         plt.setp(self.ax_angle.get_xticklabels(), visible=False)
         self.ax_angle.set_ylim([-math.pi, math.pi])
         self.ax_angle.set_ymargin(0.0)
 
-        self.ax_position = self.fig.add_subplot(gs[1, :], sharex=self.ax_velocity)
+        self.ax_position = self.plotfig.add_subplot(pgs[1, :], sharex=self.ax_velocity)
         plt.setp(self.ax_position.get_xticklabels(), visible=False)
         self.ax_position.set_ylim([-0.25, 0.25])
         self.ax_position.set_ymargin(0.0)
         
                 
-        self.ax_durationbox = self.fig.add_subplot(gs[5, 1])
+        self.ax_durationbox = self.controlfig.add_subplot(cgs[1, 1])
         self.textbox_duration = TextBox(self.ax_durationbox, label=None, initial="10")
         
-        self.ax_notebox = self.fig.add_subplot(gs[4, :2])
+        self.ax_notebox = self.controlfig.add_subplot(cgs[0, :2])
         self.textbox_note = TextBox(self.ax_notebox, label=None, initial="Notes")
         
         
-        self.ax_button_cosine = self.fig.add_subplot(gs[4, 2])
-        self.ax_button_cosine_pid = self.fig.add_subplot(gs[4, 3])
-        self.ax_cosbox = self.fig.add_subplot(gs[4, 4:])
+        self.ax_button_cosine = self.controlfig.add_subplot(cgs[0, 2])
+        self.ax_button_cosine_pid = self.controlfig.add_subplot(cgs[0, 3])
+        self.ax_cosbox = self.controlfig.add_subplot(cgs[0, 4:])
         self.textbox_cos = TextBox(self.ax_cosbox, label=None, initial="[(0.4, 10, 0)]")
         
-        self.ax_button_step = self.fig.add_subplot(gs[5, 2])
-        self.ax_button_step_pid = self.fig.add_subplot(gs[5, 3])
-        self.ax_stepbox = self.fig.add_subplot(gs[5, 4:])
+        self.ax_button_step = self.controlfig.add_subplot(cgs[1, 2])
+        self.ax_button_step_pid = self.controlfig.add_subplot(cgs[1, 3])
+        self.ax_stepbox = self.controlfig.add_subplot(cgs[1, 4:])
         self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5),(-.5, 10), (.5, 10.5)]")
         
         
-        self.ax_button_pid = self.fig.add_subplot(gs[6, 2])
+        self.ax_button_pid = self.controlfig.add_subplot(cgs[2, 2])
         self.button_pid = Button(self.ax_button_pid, 'Set Gains')
-        self.ax_pidbox = self.fig.add_subplot(gs[6, 3:])       
+        self.ax_pidbox = self.controlfig.add_subplot(cgs[2, 3:])       
         self.textbox_pid = TextBox(self.ax_pidbox, label=None, initial="[0.4, 10, 0]")
 
-        self.ax_button_record = self.fig.add_subplot(gs[5, 0])
-        self.ax_button_disable = self.fig.add_subplot(gs[6, 0])
+        self.ax_button_record = self.controlfig.add_subplot(cgs[1, 0])
+        self.ax_button_disable = self.controlfig.add_subplot(cgs[2, 0])
         
-        self.ax_button_calib = self.fig.add_subplot(gs[6, 1])
+        self.ax_button_calib = self.controlfig.add_subplot(cgs[2, 1])
         #self.ax_button_exit = self.fig.add_subplot(gs[6, 5])
         
         self.button_record = Button(self.ax_button_record, 'Record')
@@ -134,11 +139,11 @@ class PendulumController(object):
         self.gui.button_disable.on_clicked(self.action_disable)
         self.gui.button_step.on_clicked(self.step_button_cb)
         self.gui.button_calib.on_clicked(self.calib_button_cb)
-        #self.gui.button_exit.on_clicked(self.shutdown)
-        self.gui.fig.canvas.mpl_connect('close_event', self.shutdown)
         self.gui.button_cosine.on_clicked(self.cosine_button_cb)
         self.gui.button_pid.on_clicked(self.pid_button_cb)
         
+        self.gui.controlfig.canvas.mpl_connect('close_event', self.shutdown)
+        self.gui.plotfig.canvas.mpl_connect('close_event', self.shutdown)
         
         x = np.linspace(-self.PLOT_WINDOW/self.DATA_RATE_HZ, 0, self.PLOT_WINDOW)
         y = np.sin(x)
@@ -149,7 +154,7 @@ class PendulumController(object):
         self.motor1_command_plot, = self.gui.ax_velocity.plot(x, y)
         self.motor1_setpoint_plot, = self.gui.ax_velocity.plot(x, y)
         
-        self.ani = animation.FuncAnimation(self.gui.fig, 
+        self.ani = animation.FuncAnimation(self.gui.plotfig, 
                                            self.animate, 
                                            init_func=self.init, 
                                            interval=30,
