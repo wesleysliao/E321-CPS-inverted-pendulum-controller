@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import time
 import math
 import queue
 import serial
@@ -26,7 +27,7 @@ class PenConGui(object):
         
         self.ax_velocity = self.fig.add_subplot(gs[2, :])
         self.ax_velocity.ticklabel_format(axis="x", style="plain")
-        self.ax_velocity.set_ylim([-2, 2])
+        self.ax_velocity.set_ylim([-10000, 10000])
         
         self.ax_angle = self.fig.add_subplot(gs[0, :], sharex=self.ax_velocity)
         plt.setp(self.ax_angle.get_xticklabels(), visible=False)
@@ -35,7 +36,7 @@ class PenConGui(object):
 
         self.ax_position = self.fig.add_subplot(gs[1, :], sharex=self.ax_velocity)
         plt.setp(self.ax_position.get_xticklabels(), visible=False)
-        self.ax_position.set_ylim([-0.5, 0.5])
+        self.ax_position.set_ylim([-0.25, 0.25])
         self.ax_position.set_ymargin(0.0)
         
                 
@@ -52,7 +53,7 @@ class PenConGui(object):
         
         self.ax_button_step = self.fig.add_subplot(gs[5, 2])
         self.ax_stepbox = self.fig.add_subplot(gs[5, 3:])
-        self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5), (.5, 10), (-.5, 10.5)]")
+        self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5),(-.5, 10), (.5, 10.5)]")
         
         
         self.ax_button_pid = self.fig.add_subplot(gs[6, 2])
@@ -60,7 +61,6 @@ class PenConGui(object):
         self.ax_pidbox = self.fig.add_subplot(gs[6, 3:5])       
         self.textbox_pid = TextBox(self.ax_pidbox, label=None, initial="[0.4, 10, 0]")
 
-        
         self.ax_button_record = self.fig.add_subplot(gs[5, 0])
         self.ax_button_disable = self.fig.add_subplot(gs[6, 0])
         
@@ -136,17 +136,17 @@ class PendulumController(object):
         self.gui.button_pid.on_clicked(self.pid_button_cb)
         
         
-        x = np.arange(0, self.PLOT_WINDOW)
-        self.motor1_counts_plot, = self.gui.ax_position.plot(x, x, color='blue')
-        self.angle_plot, = self.gui.ax_angle.plot(x, x, color='red')
+        x = np.linspace(-self.PLOT_WINDOW/self.DATA_RATE_HZ, 0, self.PLOT_WINDOW)
+        self.motor1_counts_plot, = self.gui.ax_position.plot(x, [np.nan]*self.PLOT_WINDOW, color='blue')
+        self.angle_plot, = self.gui.ax_angle.plot(x, [np.nan]*self.PLOT_WINDOW, color='red')
         
-        self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, x)
-        self.motor1_command_plot, = self.gui.ax_velocity.plot(x, x)
+        self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, [np.nan]*self.PLOT_WINDOW)
+        self.motor1_command_plot, = self.gui.ax_velocity.plot(x, [np.nan]*self.PLOT_WINDOW)
         
         self.ani = animation.FuncAnimation(self.gui.fig, 
                                            self.animate_and_store, 
                                            init_func=self.init, 
-                                           interval=50,
+                                           interval=60,
                                            blit=True,
                                            frames=self.data_write_loop, 
                                            repeat=True)
@@ -201,31 +201,34 @@ class PendulumController(object):
         #cosinetriplets should be an iterable of tuple triplets for magnitude, freq., and phase
         self.ser.write(self.MESSAGE_HEADER)
         self.ser.write(self.MODE_COSINE_CONTROL)
+        self.ser.write(bytes([len(cosinetriplets)]))
         for triplet in cosinetriplets:
             print(triplet)
-            self.ser.write(bytes(struct.pack('fff', triplet[0], triplet[1], triplet[2])))
+            self.ser.write(bytes(struct.pack('fff', float(triplet[0]), float(triplet[1]), float(triplet[2]))))
         self.ser.write(b'\n')
         
     def cosine_button_cb(self, event):
         self.gui.set_mode_color(self.gui.button_cosine)
         self.set_cosine_mode(eval(self.gui.textbox_cos.text))
-        self.action_enable()
         self.action_reset_clock()
+        self.action_enable()
         
     def set_step_mode(self, steppairs):
         #steppairs should be an iterable of tuple pairs for magnitude, and phase
         self.ser.write(self.MESSAGE_HEADER)
         self.ser.write(self.MODE_STEP_CONTROL)
+        self.ser.write(bytes([len(steppairs)]))
+        print(bytes([len(steppairs)]))
         for pair in steppairs:
             print(pair)
-            self.ser.write(bytes(struct.pack('ff', pair[0], pair[1])))
+            self.ser.write(bytes(struct.pack('ff', float(pair[0]), float(pair[1]))))
         self.ser.write(b'\n')
         
     def step_button_cb(self, event):
         self.gui.set_mode_color(self.gui.button_step)
         self.set_step_mode(eval(self.gui.textbox_step.text))
-        self.action_enable()
         self.action_reset_clock()
+        self.action_enable()
     
     def record_button_cb(self, event):
         self.action_reset_clock()
@@ -281,7 +284,7 @@ class PendulumController(object):
                         line = self.ser.readline()
                         if(len(line)==21):
                             rawvalues = struct.unpack(self.STATUS_FORMAT, line)[:-1]
-                            print(self.convert_values(rawvalues))
+                            #print(self.convert_values(rawvalues))
                             self.dataqueue.put(self.convert_values(rawvalues))
         self.close_serial()
                             
@@ -318,8 +321,8 @@ class PendulumController(object):
         timestamp_s = rawvalues[0]
         angle_rad = rawvalues[1]*self.RADS_PER_COUNT
         position_m = rawvalues[2]*self.METERS_PER_COUNT
-        velocity_mps = rawvalues[3]*self.METERS_PER_COUNT
-        motor_command  = rawvalues[4]/10000.0
+        velocity_mps = rawvalues[3]#*self.METERS_PER_COUNT
+        motor_command  = rawvalues[4]
         
         return timestamp_s, angle_rad, position_m, velocity_mps, motor_command
         
@@ -332,17 +335,15 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
     
     def animate_and_store(self, data):
-        self.gui.ax_velocity.set_xlim([data[-1, 0]-(self.PLOT_WINDOW/self.DATA_RATE_HZ), data[-1, 0]])
-        
-        self.angle_plot.set_data(data[:,0], data[:,1])
+        self.angle_plot.set_ydata(data[:,1])
 
-        self.motor1_counts_plot.set_data(data[:,0], data[:,2])
+        self.motor1_counts_plot.set_ydata(data[:,2])
 
-        self.motor1_cps_plot.set_data(data[:,0], data[:,3])
-        self.motor1_command_plot.set_data(data[:,0], data[:,4])
+        self.motor1_cps_plot.set_ydata(data[:,3])
+        self.motor1_command_plot.set_ydata(data[:,4])
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.gui.ax_velocity
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot
     
 if __name__ == "__main__":
-    pendcon = PendulumController(port="COM10")
+    pendcon = PendulumController(port="COM7")
     plt.show()
