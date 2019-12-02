@@ -172,7 +172,7 @@ class PendulumController(object):
     
     def __init__(self, port='COM1'):
         self.ser = serial.Serial(port=port,
-                            baudrate=115200,
+                            baudrate=1000000,
                             bytesize=8,
                             parity='N',
                             stopbits=1,
@@ -414,5 +414,5 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
     
 if __name__ == "__main__":
-    pendcon = PendulumController(port="COM7")
+    pendcon = PendulumController(port="COM5")
     plt.show()
