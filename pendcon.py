@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import datetime
-import time
 import math
 import queue
 import serial
@@ -132,16 +131,18 @@ class PendulumController(object):
         self.gui.button_step.on_clicked(self.step_button_cb)
         self.gui.button_calib.on_clicked(self.calib_button_cb)
         self.gui.button_exit.on_clicked(self.shutdown)
+        self.gui.fig.canvas.mpl_connect('close_event', self.shutdown)
         self.gui.button_cosine.on_clicked(self.cosine_button_cb)
         self.gui.button_pid.on_clicked(self.pid_button_cb)
         
         
         x = np.linspace(-self.PLOT_WINDOW/self.DATA_RATE_HZ, 0, self.PLOT_WINDOW)
-        self.motor1_counts_plot, = self.gui.ax_position.plot(x, [np.nan]*self.PLOT_WINDOW, color='blue')
-        self.angle_plot, = self.gui.ax_angle.plot(x, [np.nan]*self.PLOT_WINDOW, color='red')
+        y = np.sin(x)
+        self.motor1_counts_plot, = self.gui.ax_position.plot(x, y, color='blue')
+        self.angle_plot, = self.gui.ax_angle.plot(x, y, color='red')
         
-        self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, [np.nan]*self.PLOT_WINDOW)
-        self.motor1_command_plot, = self.gui.ax_velocity.plot(x, [np.nan]*self.PLOT_WINDOW)
+        self.motor1_cps_plot, = self.gui.ax_velocity.plot(x, y)
+        self.motor1_command_plot, = self.gui.ax_velocity.plot(x, y)
         
         self.ani = animation.FuncAnimation(self.gui.fig, 
                                            self.animate_and_store, 
