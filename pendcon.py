@@ -18,14 +18,13 @@ mplstyle.use('fast')
 class PenConGui(object):
     
     def __init__(self):
-        self.controlfig = plt.figure(tight_layout=False, dpi=192)
+        
+        #
+        # Time series plots figure
+        #
         self.plotfig =plt.figure(tight_layout=False, dpi=192)
         
-        pgs = GridSpec(3, 1, figure=self.plotfig, height_ratios=[1,1,1],
-                      top=.99, bottom=0.01, left=0.05, right=0.99,
-                      wspace=0.05, hspace=0.05)
-        
-        cgs = GridSpec(3, 8, figure=self.controlfig, height_ratios=[0.25, 0.25, 0.25],
+        pgs = GridSpec(4, 1, figure=self.plotfig, height_ratios=[1,1,1,0.2],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
                       wspace=0.05, hspace=0.05)
         
@@ -43,45 +42,90 @@ class PenConGui(object):
         self.ax_position.set_ylim([-0.25, 0.25])
         self.ax_position.set_ymargin(0.0)
         
-                
-        self.ax_durationbox = self.controlfig.add_subplot(cgs[1, 1])
-        self.textbox_duration = TextBox(self.ax_durationbox, label=None, initial="10")
+        
+        #
+        # Control Buttons figure
+        #
+        self.controlfig = plt.figure(tight_layout=False, dpi=96)
+        
+        cgs = GridSpec(9, 9, figure=self.controlfig, width_ratios=[1.5,1.5,0.5,2,2,2,0.5,2,2],
+                      top=.99, bottom=0.01, left=0.05, right=0.99,
+                      wspace=0.05, hspace=0.05)
+        
         
         self.ax_notebox = self.controlfig.add_subplot(cgs[0, :2])
         self.textbox_note = TextBox(self.ax_notebox, label=None, initial="Notes")
         
-        
-        self.ax_button_cosine = self.controlfig.add_subplot(cgs[0, 2])
-        self.ax_button_cosine_pid = self.controlfig.add_subplot(cgs[0, 3])
-        self.ax_cosbox = self.controlfig.add_subplot(cgs[0, 4:])
-        self.textbox_cos = TextBox(self.ax_cosbox, label=None, initial="[(0.4, 10, 0)]")
-        
-        self.ax_button_step = self.controlfig.add_subplot(cgs[1, 2])
-        self.ax_button_step_pid = self.controlfig.add_subplot(cgs[1, 3])
-        self.ax_stepbox = self.controlfig.add_subplot(cgs[1, 4:])
-        self.textbox_step = TextBox(self.ax_stepbox, label=None, initial="[(.5, 1), (-.5, 1.5),(-.5, 10), (.5, 10.5)]")
-        
-        
-        self.ax_button_pid = self.controlfig.add_subplot(cgs[2, 2])
-        self.button_pid = Button(self.ax_button_pid, 'Set Gains')
-        self.ax_pidbox = self.controlfig.add_subplot(cgs[2, 3:])       
-        self.textbox_pid = TextBox(self.ax_pidbox, label=None, initial="[0.4, 10, 0]")
-
         self.ax_button_record = self.controlfig.add_subplot(cgs[1, 0])
-        self.ax_button_disable = self.controlfig.add_subplot(cgs[2, 0])
-        
-        self.ax_button_calib = self.controlfig.add_subplot(cgs[2, 1])
-        #self.ax_button_exit = self.fig.add_subplot(gs[6, 5])
-        
         self.button_record = Button(self.ax_button_record, 'Record')
-        self.button_record.hovercolor = "red"
-        self.button_disable = Button(self.ax_button_disable, 'Disable')
+        self.button_record.hovercolor = "red" 
+        
+        self.ax_durationbox = self.controlfig.add_subplot(cgs[1, 1])
+        self.textbox_duration = TextBox(self.ax_durationbox, label=None, initial="10")
+        
+        self.ax_button_cosine = self.controlfig.add_subplot(cgs[2, 0])
         self.button_cosine = Button(self.ax_button_cosine, 'Cosine')
-        self.button_cosine_pid = Button(self.ax_button_cosine_pid, 'Cos (PID)')
+        
+        self.ax_button_step = self.controlfig.add_subplot(cgs[2, 1])
         self.button_step = Button(self.ax_button_step, 'Step')
+        
+        self.ax_button_cosine_pid = self.controlfig.add_subplot(cgs[3, 0])
+        self.button_cosine_pid = Button(self.ax_button_cosine_pid, 'Cos (PID)')
+        
+        self.ax_button_step_pid = self.controlfig.add_subplot(cgs[3, 1])
         self.button_step_pid = Button(self.ax_button_step_pid, 'Step (PID)')
-        self.button_calib = Button(self.ax_button_calib, 'Calibrate')    
-        #self.button_exit = Button(self.ax_button_exit, 'Exit')
+
+        self.ax_button_pid = self.controlfig.add_subplot(cgs[4, 0:2])
+        self.button_pid = Button(self.ax_button_pid, 'Set Gains')
+        
+        self.ax_button_calib = self.controlfig.add_subplot(cgs[6, 0:2])
+        self.button_calib = Button(self.ax_button_calib, 'Calibrate')   
+
+        self.ax_button_disable = self.controlfig.add_subplot(cgs[7, 0:2])
+        self.button_disable = Button(self.ax_button_disable, 'Disable')
+        
+        
+        self.ax_textbox_pid_p = self.controlfig.add_subplot(cgs[6, 5])
+        self.ax_textbox_pid_p.set_title("Gains")
+        self.textbox_pid_p = TextBox(self.ax_textbox_pid_p, label="kP  ", initial="1.0")
+        self.ax_textbox_pid_i = self.controlfig.add_subplot(cgs[7, 5])
+        self.textbox_pid_i = TextBox(self.ax_textbox_pid_i, label="kI  ", initial="0.0")
+        self.ax_textbox_pid_d = self.controlfig.add_subplot(cgs[8, 5])
+        self.textbox_pid_d = TextBox(self.ax_textbox_pid_d, label="kD  ", initial="0.0")
+        
+        self.ax_textbox_cos_mag = []
+        self.ax_textbox_cos_freq = []
+        self.ax_textbox_cos_phase = []
+        self.textbox_cos_mag = []
+        self.textbox_cos_freq = []
+        self.textbox_cos_phase = []
+        for ndx, i in enumerate(range(1,5)):
+            self.ax_textbox_cos_mag.append(self.controlfig.add_subplot(cgs[i, 3]))
+            self.ax_textbox_cos_freq.append(self.controlfig.add_subplot(cgs[i, 4]))
+            self.ax_textbox_cos_phase.append(self.controlfig.add_subplot(cgs[i, 5]))
+            
+            if ndx == 0:
+                self.ax_textbox_cos_mag[-1].set_title("Mag (norm.)")
+                self.ax_textbox_cos_freq[-1].set_title("Freq (Hz)")
+                self.ax_textbox_cos_phase[-1].set_title("Phase (s)")
+        
+            self.textbox_cos_mag.append(TextBox(self.ax_textbox_cos_mag[-1], label=str(ndx+1)+" ", initial="0.0"))
+            self.textbox_cos_freq.append(TextBox(self.ax_textbox_cos_freq[-1], label=None, initial="0.0"))
+            self.textbox_cos_phase.append(TextBox(self.ax_textbox_cos_phase[-1], label=None, initial="0.0"))
+
+        self.ax_textbox_step_mag = []
+        self.ax_textbox_step_phase = []
+        self.textbox_step_mag = []
+        self.textbox_step_phase = []
+        for ndx, i in enumerate(range(1,9)):
+            self.ax_textbox_step_mag.append(self.controlfig.add_subplot(cgs[i, 7]))
+            self.ax_textbox_step_phase.append(self.controlfig.add_subplot(cgs[i, 8]))
+            if ndx == 0:
+                self.ax_textbox_step_mag[-1].set_title("Mag (norm.)")
+                self.ax_textbox_step_phase[-1].set_title("Delay (s)")
+            self.textbox_step_mag.append(TextBox(self.ax_textbox_step_mag[-1], label=str(ndx+1)+" ", initial="0.0"))
+            self.textbox_step_phase.append(TextBox(self.ax_textbox_step_phase[-1], label=None, initial="0.0"))
+            
     
     def set_mode_color(self, active_button):
         self.button_cosine.color = "lightgrey"
@@ -219,8 +263,14 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def cosine_button_cb(self, event):
-        self.gui.set_mode_color(self.gui.button_cosine)
-        self.set_cosine_mode(eval(self.gui.textbox_cos.text))
+        self.gui.set_mode_color(self.gui.button_cosine)        
+        triplets = []
+        for i in range(len(self.gui.textbox_cos_mag)):
+            triplets.append([float(self.gui.textbox_cos_mag[i].text),
+                             float(self.gui.textbox_cos_freq[i].text),
+                             float(self.gui.textbox_cos_phase[i].text)])
+
+        self.set_cosine_mode(triplets)
         self.action_reset_clock()
         self.action_enable()
         
@@ -237,7 +287,13 @@ class PendulumController(object):
         
     def step_button_cb(self, event):
         self.gui.set_mode_color(self.gui.button_step)
-        self.set_step_mode(eval(self.gui.textbox_step.text))
+        
+        steppairs = []
+        for i in range(len(self.gui.textbox_step_mag)):
+            steppairs.append([float(self.gui.textbox_step_mag[i].text),
+                              float(self.gui.textbox_step_phase[i].text)])
+        
+        self.set_step_mode(steppairs)
         self.action_reset_clock()
         self.action_enable()
     
