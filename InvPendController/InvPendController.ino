@@ -16,8 +16,8 @@
 
 #define ENABLE_DISPLAY 0
 
-#define MOTOR_UPDATE_FREQ_HZ 400
-#define SERIAL_UPDATE_FACTOR 2
+#define MOTOR_UPDATE_FREQ_HZ 500
+#define SERIAL_UPDATE_FACTOR 5
 #define SCREEN_UPDATE_FACTOR 50
 
 #define TIMING_OVERHEAD_us 4
@@ -183,7 +183,12 @@ uint8_t messbuf_read_index = 0;
 uint8_t messbuf_write_index = 0;
 
 uint8_t messbuf_waiting() {
+  if (messbuf_write_index < messbuf_read_index)
+  {
+    return (messbuf_write_index + (256 - messbuf_read_index));
+  } else {  
     return messbuf_write_index - messbuf_read_index;
+  }
 }
 
 byte messbuf_read()
@@ -259,7 +264,7 @@ void init_display()
 
 void init_serial()
 {
-  Serial.begin(1000000);
+  Serial.begin(2000000);
   
 #if HUMAN_READABLE_SERIAL == 1
   Serial.println("\n");
@@ -395,7 +400,7 @@ void update_motor_control()
           
         case CALIB_STEP_LEFT_LIM:
           motor1_left_limit = motor1_count-1000;
-          motor1_command = -4000;
+          motor1_command = -2000;
           if (millis() > calib_step_timeout)
           {
             motor1_left_limit = motor1_count;
@@ -406,7 +411,7 @@ void update_motor_control()
           
         case CALIB_STEP_RIGHT_LIM:
           motor1_right_limit = motor1_count+1000;
-          motor1_command = 4000;
+          motor1_command = 2000;
           if (millis() > calib_step_timeout)
           {
             noInterrupts();
@@ -421,7 +426,7 @@ void update_motor_control()
           }
           break;
         case CALIB_STEP_CENTER:
-          motor1_command = -4000;
+          motor1_command = -2000;
           if(motor1_count <= 0)
           {
             motor1_command = 0;
@@ -642,7 +647,6 @@ void serial_read()
     {
       if(messbuf_read() =='E' && messbuf_read() =='F')
       {
-        Serial.print("Recieved command ");
         switch(messbuf_read()){
           case ACTION_CODE:
             switch(messbuf_read())
@@ -663,10 +667,6 @@ void serial_read()
             break;
               
           case MODE_CALIBRATE:
-
-#if HUMAN_READABLE_SERIAL == 1
-            Serial.println("CALIBRATING");
-#endif
             motor1_control_mode = MODE_CALIBRATE;
             calibration_step = CALIB_STEP_START;
             break;
@@ -678,10 +678,6 @@ void serial_read()
             break;
             
           case MODE_COSINE_CONTROL:
-
-#if HUMAN_READABLE_SERIAL == 1
-            Serial.print("COSINE control ");
-#endif
             motor1_control_mode = MODE_COSINE_CONTROL;
             num_of_tuples = messbuf_read();
             for(int cosine = 0; cosine < MAX_COSINES; cosine++)
@@ -690,15 +686,7 @@ void serial_read()
                 readbuffer[i] = messbuf_read();
               motor1_cos_mag[cosine] = ((float*)readbuffer)[0];
               motor1_cos_freq_Hz[cosine] = ((float*)readbuffer)[1];
-              motor1_cos_phase_s[cosine] = ((float*)readbuffer)[2];
-
-#if HUMAN_READABLE_SERIAL == 1         
-              Serial.print(motor1_cos_mag[cosine]);
-              Serial.print(" ");
-              Serial.print(motor1_cos_freq_Hz[cosine]);
-              Serial.print(" ");
-              Serial.println(motor1_cos_phase_s[cosine]);
-#endif         
+              motor1_cos_phase_s[cosine] = ((float*)readbuffer)[2];  
             }
             
             for(int i = num_of_tuples; i < MAX_COSINES; i++)
@@ -707,24 +695,9 @@ void serial_read()
               motor1_cos_freq_Hz[i] = 0.0;
               motor1_cos_phase_s[i] = 0.0;
             }
- 
-#if HUMAN_READABLE_SERIAL == 1           
-            for(int cosine = 0; cosine < MAX_COSINES; cosine++)
-            {
-              Serial.print(motor1_cos_mag[cosine]);
-              Serial.print(" ");
-              Serial.print(motor1_cos_freq_Hz[cosine]);
-              Serial.print(" ");
-              Serial.println(motor1_cos_phase_s[cosine]);
-            }
-#endif
             break;
 
           case MODE_STEP_CONTROL:
-
-#if HUMAN_READABLE_SERIAL == 1
-            Serial.print("STEP control ");
-#endif
             motor1_control_mode = MODE_STEP_CONTROL;
             num_of_tuples = messbuf_read();
             for(int step_fn = 0; step_fn < num_of_tuples; step_fn++)
@@ -733,12 +706,6 @@ void serial_read()
                 readbuffer[i] = messbuf_read();
               motor1_step_mag[step_fn] = ((float*)readbuffer)[0];
               motor1_step_phase_s[step_fn] = ((float*)readbuffer)[1];
-
-              #if HUMAN_READABLE_SERIAL == 1         
-              Serial.print(motor1_step_mag[step_fn]);
-              Serial.print(" ");
-              Serial.println(motor1_step_phase_s[step_fn]);
-              #endif
             }
             
             for(int i = num_of_tuples; i < MAX_STEPS; i++)
@@ -746,15 +713,6 @@ void serial_read()
                 motor1_step_mag[i] = 0.0;
                 motor1_step_phase_s[i] = 0.0;
             }
-             
-            #if HUMAN_READABLE_SERIAL == 1           
-            for(int step_fn = 0; step_fn < MAX_STEPS; step_fn++)
-            {
-              Serial.print(motor1_cos_mag[step_fn]);
-              Serial.print(" ");
-              Serial.println(motor1_cos_phase_s[step_fn]);
-            }
-            #endif
             break;
             
           case MODE_PID_ANGLE_SPEED_CONTROL:
@@ -776,11 +734,7 @@ void serial_read()
             break;
         }
       }
-      else
-        break;
     }
-    else
-      break;
   }
 }
 

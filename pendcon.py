@@ -168,11 +168,11 @@ class PendulumController(object):
     
     DATA_RATE_HZ = 100
     MAX_DATAPOINTS = 1000
-    PLOT_WINDOW = 400
+    PLOT_WINDOW = 1000
     
     def __init__(self, port='COM1'):
         self.ser = serial.Serial(port=port,
-                            baudrate=1000000,
+                            baudrate=2000000,
                             bytesize=8,
                             parity='N',
                             stopbits=1,
@@ -263,12 +263,17 @@ class PendulumController(object):
         self.ser.write(b'\n')
         
     def cosine_button_cb(self, event):
-        self.gui.set_mode_color(self.gui.button_cosine)        
+        self.gui.set_mode_color(self.gui.button_cosine)
+        
         triplets = []
         for i in range(len(self.gui.textbox_cos_mag)):
-            triplets.append([float(self.gui.textbox_cos_mag[i].text),
-                             float(self.gui.textbox_cos_freq[i].text),
-                             float(self.gui.textbox_cos_phase[i].text)])
+            trip = [float(self.gui.textbox_cos_mag[i].text),
+                    float(self.gui.textbox_cos_freq[i].text),
+                    float(self.gui.textbox_cos_phase[i].text)]
+            if trip[0] == 0.0:
+                continue
+            else:
+               triplets.append(trip)
 
         self.set_cosine_mode(triplets)
         self.action_reset_clock()
@@ -290,8 +295,12 @@ class PendulumController(object):
         
         steppairs = []
         for i in range(len(self.gui.textbox_step_mag)):
-            steppairs.append([float(self.gui.textbox_step_mag[i].text),
-                              float(self.gui.textbox_step_phase[i].text)])
+            pair = [float(self.gui.textbox_step_mag[i].text),
+                    float(self.gui.textbox_step_phase[i].text)]
+            if pair[0] == 0.0:
+                continue
+            else:
+                steppairs.append(pair)
         
         self.set_step_mode(steppairs)
         self.action_reset_clock()
@@ -309,7 +318,6 @@ class PendulumController(object):
         self.recorddata = np.empty((self.MAX_DATAPOINTS, 5))
         self.recording.set()
         
-    
     def action_enable(self, event=None):
         self.ser.write(self.MESSAGE_HEADER)
         self.ser.write(self.ACTION_CODE)
@@ -414,5 +422,5 @@ class PendulumController(object):
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
     
 if __name__ == "__main__":
-    pendcon = PendulumController(port="COM5")
+    pendcon = PendulumController(port="COM10")
     plt.show()
