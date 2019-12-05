@@ -264,7 +264,7 @@ void init_display()
 
 void init_serial()
 {
-  Serial.begin(2000000);
+  Serial.begin(256000);
   
 #if HUMAN_READABLE_SERIAL == 1
   Serial.println("\n");
@@ -400,7 +400,7 @@ void update_motor_control()
           
         case CALIB_STEP_LEFT_LIM:
           motor1_left_limit = motor1_count-1000;
-          motor1_command = -2000;
+          motor1_command = -3500;
           if (millis() > calib_step_timeout)
           {
             motor1_left_limit = motor1_count;
@@ -411,7 +411,7 @@ void update_motor_control()
           
         case CALIB_STEP_RIGHT_LIM:
           motor1_right_limit = motor1_count+1000;
-          motor1_command = 2000;
+          motor1_command = 3500;
           if (millis() > calib_step_timeout)
           {
             noInterrupts();
@@ -426,7 +426,7 @@ void update_motor_control()
           }
           break;
         case CALIB_STEP_CENTER:
-          motor1_command = -2000;
+          motor1_command = -3000;
           if(motor1_count <= 0)
           {
             motor1_command = 0;

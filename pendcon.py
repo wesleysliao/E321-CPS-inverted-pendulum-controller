@@ -22,7 +22,7 @@ class PenConGui(object):
         #
         # Time series plots figure
         #
-        self.plotfig =plt.figure(tight_layout=False, dpi=192)
+        self.plotfig =plt.figure(tight_layout=False, dpi=96)
         
         pgs = GridSpec(4, 1, figure=self.plotfig, height_ratios=[1,1,1,0.2],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
@@ -69,14 +69,14 @@ class PenConGui(object):
         self.ax_button_step = self.controlfig.add_subplot(cgs[2, 1])
         self.button_step = Button(self.ax_button_step, 'Step')
         
-        self.ax_button_cosine_pid = self.controlfig.add_subplot(cgs[3, 0])
-        self.button_cosine_pid = Button(self.ax_button_cosine_pid, 'Cos (PID)')
-        
-        self.ax_button_step_pid = self.controlfig.add_subplot(cgs[3, 1])
-        self.button_step_pid = Button(self.ax_button_step_pid, 'Step (PID)')
+#        self.ax_button_cosine_pid = self.controlfig.add_subplot(cgs[3, 0])
+#        self.button_cosine_pid = Button(self.ax_button_cosine_pid, 'Cos (PID)')
+#        
+#        self.ax_button_step_pid = self.controlfig.add_subplot(cgs[3, 1])
+#        self.button_step_pid = Button(self.ax_button_step_pid, 'Step (PID)')
 
-        self.ax_button_pid = self.controlfig.add_subplot(cgs[4, 0:2])
-        self.button_pid = Button(self.ax_button_pid, 'Set Gains')
+#        self.ax_button_pid = self.controlfig.add_subplot(cgs[4, 0:2])
+#        self.button_pid = Button(self.ax_button_pid, 'Set Gains')
         
         self.ax_button_calib = self.controlfig.add_subplot(cgs[6, 0:2])
         self.button_calib = Button(self.ax_button_calib, 'Calibrate')   
@@ -85,14 +85,14 @@ class PenConGui(object):
         self.button_disable = Button(self.ax_button_disable, 'Disable')
         
         
-        self.ax_textbox_pid_p = self.controlfig.add_subplot(cgs[6, 5])
-        self.ax_textbox_pid_p.set_title("Gains")
-        self.textbox_pid_p = TextBox(self.ax_textbox_pid_p, label="kP  ", initial="1.0")
-        self.ax_textbox_pid_i = self.controlfig.add_subplot(cgs[7, 5])
-        self.textbox_pid_i = TextBox(self.ax_textbox_pid_i, label="kI  ", initial="0.0")
-        self.ax_textbox_pid_d = self.controlfig.add_subplot(cgs[8, 5])
-        self.textbox_pid_d = TextBox(self.ax_textbox_pid_d, label="kD  ", initial="0.0")
-        
+#        self.ax_textbox_pid_p = self.controlfig.add_subplot(cgs[6, 5])
+#        self.ax_textbox_pid_p.set_title("Gains")
+#        self.textbox_pid_p = TextBox(self.ax_textbox_pid_p, label="kP  ", initial="1.0")
+#        self.ax_textbox_pid_i = self.controlfig.add_subplot(cgs[7, 5])
+#        self.textbox_pid_i = TextBox(self.ax_textbox_pid_i, label="kI  ", initial="0.0")
+#        self.ax_textbox_pid_d = self.controlfig.add_subplot(cgs[8, 5])
+#        self.textbox_pid_d = TextBox(self.ax_textbox_pid_d, label="kD  ", initial="0.0")
+#        
         self.ax_textbox_cos_mag = []
         self.ax_textbox_cos_freq = []
         self.ax_textbox_cos_phase = []
@@ -130,12 +130,12 @@ class PenConGui(object):
     def set_mode_color(self, active_button):
         self.button_cosine.color = "lightgrey"
         self.button_step.color = "lightgrey"
-        self.button_pid.color = "lightgrey"
+#        self.button_pid.color = "lightgrey"
         self.button_calib.color = "lightgrey"
         
         self.button_cosine.hovercolor = "whitesmoke"
         self.button_step.hovercolor = "whitesmoke"
-        self.button_pid.hovercolor = "whitesmoke"
+#        self.button_pid.hovercolor = "whitesmoke"
         self.button_calib.hovercolor = "whitesmoke"
         
         active_button.color = "limegreen"
@@ -172,7 +172,7 @@ class PendulumController(object):
     
     def __init__(self, port='COM1'):
         self.ser = serial.Serial(port=port,
-                            baudrate=2000000,
+                            baudrate=256000,
                             bytesize=8,
                             parity='N',
                             stopbits=1,
@@ -184,7 +184,7 @@ class PendulumController(object):
         self.gui.button_step.on_clicked(self.step_button_cb)
         self.gui.button_calib.on_clicked(self.calib_button_cb)
         self.gui.button_cosine.on_clicked(self.cosine_button_cb)
-        self.gui.button_pid.on_clicked(self.pid_button_cb)
+#        self.gui.button_pid.on_clicked(self.pid_button_cb)
         
         self.gui.controlfig.canvas.mpl_connect('close_event', self.shutdown)
         self.gui.plotfig.canvas.mpl_connect('close_event', self.shutdown)
@@ -417,7 +417,7 @@ class PendulumController(object):
 
         self.motor1_cps_plot.set_ydata(data[:,3])
         self.motor1_command_plot.set_ydata(data[:,4])
-        self.motor1_setpoint_plot.set_ydata(data[:,4])
+        self.motor1_setpoint_plot.set_ydata([0]*len(data[:,4]))
         
         return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
     
