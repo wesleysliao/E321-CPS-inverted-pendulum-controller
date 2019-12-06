@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.gridspec import GridSpec
 from matplotlib.widgets import Button, TextBox
+from matplotlib.patches import Rectangle
 
 import matplotlib.style as mplstyle
 mplstyle.use('fast')
@@ -22,9 +23,9 @@ class PenConGui(object):
         #
         # Time series plots figure
         #
-        self.plotfig =plt.figure(tight_layout=False, dpi=96)
+        self.plotfig =plt.figure(tight_layout=False, dpi=192)
         
-        pgs = GridSpec(4, 1, figure=self.plotfig, height_ratios=[1,1,1,0.2],
+        pgs = GridSpec(6, 1, figure=self.plotfig, height_ratios=[1,1,1,0.2,1,0.2],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
                       wspace=0.05, hspace=0.05)
         
@@ -41,12 +42,31 @@ class PenConGui(object):
         plt.setp(self.ax_position.get_xticklabels(), visible=False)
         self.ax_position.set_ylim([-0.25, 0.25])
         self.ax_position.set_ymargin(0.0)
+
+
+        self.axCP = self.plotfig.add_subplot(pgs[4,:])
+
+        self.cartW = 0.08
+        self.cartH = 0.05
+        cmap = plt.get_cmap("tab10")
+        cartColor = cmap(0)
+        pendColor = cmap(1)
+        
+        """ Plot cart pendulum animation"""
+        self.cart = Rectangle(np.array([0.0, 0.0]) - [0.5 * self.cartW, 0.5 * self.cartH], self.cartW, self.cartH, color = cartColor)
+        self.axCP.axhline(y=0, linewidth=2, color=cartColor)
+        self.ln = self.axCP.plot([],[], linewidth = 2, marker = '.', color = pendColor)[0]
+
+        self.axCP.axis('equal')
+        self.axCP.set_ylim([-0.6, 0.4])
+        self.axCP.set_xlim([-0.75, 0.75])
+        self.axCP.set_xlabel('Position (m)')
         
         
         #
         # Control Buttons figure
         #
-        self.controlfig = plt.figure(tight_layout=False, dpi=96)
+        self.controlfig = plt.figure(tight_layout=False, dpi=192)
         
         cgs = GridSpec(9, 9, figure=self.controlfig, width_ratios=[1.5,1.5,0.5,2,2,2,0.5,2,2],
                       top=.99, bottom=0.01, left=0.05, right=0.99,
@@ -144,6 +164,7 @@ class PenConGui(object):
 
 class PendulumController(object):
     PENDULUM_LENGTH_M = 0.335
+    Lfrac = 0.1
     RADS_PER_COUNT = math.pi/512.0
     METERS_PER_COUNT = 0.00009347
         
@@ -400,15 +421,23 @@ class PendulumController(object):
         motor_command  = rawvalues[4]
         
         return timestamp_s, angle_rad, position_m, velocity_mps, motor_command
-        
+    
+    def pendulumEndPts(self, x, theta):
+        PEP = np.array([np.array([x, 0]) + (1 - self.Lfrac) * self.PENDULUM_LENGTH_M * np.array([np.sin(theta), -np.cos(theta)]), \
+                  np.array([x, 0]) - self.Lfrac * self.PENDULUM_LENGTH_M * np.array([np.sin(theta), -np.cos(theta)])])
+        return PEP[:,0], PEP[:,1]
+    
     def init(self):
         self.angle_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_counts_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_cps_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_command_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
         self.motor1_setpoint_plot.set_ydata([np.nan] * self.PLOT_WINDOW)
+
+        self.gui.axCP.add_patch(self.gui.cart)
+        self.gui.ln.set_data(*zip((0,0), (0,0) + self.PENDULUM_LENGTH_M * np.array([np.sin(0), -np.cos(0)])))
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot, self.gui.cart, self.gui.ln
     
     def animate(self, data):
         self.angle_plot.set_ydata(data[:,1])
@@ -419,8 +448,12 @@ class PendulumController(object):
         self.motor1_command_plot.set_ydata(data[:,4])
         self.motor1_setpoint_plot.set_ydata([0]*len(data[:,4]))
         
-        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot
+        self.gui.cart.set_xy(np.array([data[-1, 2], 0]) - [0.5 * self.gui.cartW, 0.5 * self.gui.cartH])
+        px, py = self.pendulumEndPts(data[-1, 2],data[-1, 1])
+        self.gui.ln.set_data(px, py)
+                  
+        return self.angle_plot, self.motor1_counts_plot, self.motor1_cps_plot, self.motor1_command_plot, self.motor1_setpoint_plot, self.gui.cart, self.gui.ln
     
 if __name__ == "__main__":
-    pendcon = PendulumController(port="COM10")
+    pendcon = PendulumController(port="COM7")
     plt.show()

@@ -775,6 +775,7 @@ void motor1_set_ccw()
 //motor max speed 10000 cps
 int desired_cps_to_motor1(int desired_cps)
 {
+  return int(255.0 * ((0.0001*abs(desired_cps)) + 0.066));
   //return int(255.0 * ((0.0001*abs(desired_cps)) + 0.1617));
   return int(255.0*(abs(desired_cps)/10000.0));
 }
